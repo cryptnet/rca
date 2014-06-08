@@ -1,36 +1,99 @@
 #!/bin/bash
 
+[ -f basic.conf ] && source basic.conf || exit 1
+
+#crlDistributionPoints	= URI:https://www.github.com/cryptnet/rca/raw/master/crls/$ENV::KEY_CRLFILE
+RCA_NAME=`echo $2 | sed 's/[^a-zA-Z0-9_()[[:space:]]-]//g'`
+RCA_FILENAME=`echo $2 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9[[:space:]]-]//g' | sed 's/ /-/g'`
+
+# RCA DIRS
+RCA_CACERTDIR="${RCA_CERTDIR}/${RCA_FILENAME}"
+RCA_CACRLDIR="${RCA_CRLDIR}/${RCA_FILENAME}"
+
+# RCA FILES
+RCA_VARFILE="${RCA_CONFDIR}/${RCA_FILENAME}.vars"
+RCA_RANDFILE="${RCA_SECUREDIR}/${RCA_FILENAME}.rand"
+RCA_KEYFILE="${RCA_SECUREDIR}/${RCA_FILENAME}.key"
+RCA_INDEX="${RCA_CONFDIR}/${RCA_FILENAME}.index"
+RCA_SERIAL="${RCA_CONFDIR}/${RCA_FILENAME}.serial"
+RCA_CERTFILE="${RCA_CACERTSDIR}/${RCA_FILENAME}.crt"
+RCA_CRLFILE="${RCA_CRLDIR}/${RCA_FILENAME}.crl"
+
 print_usage()
 {
 	echo "usage: `basename $0` rsa|ecdsa [your root ca name here]"
 	echo
 }
 
-create_ca_vars()
+cleanup()
 {
-	read -p "Country Name (2 letter code):" -r -n 2 KEY_COUNTRY
+	rm -rf ${RCA_RANDFILE} ${RCA_KEYFILE}
+}
+
+get_ca_vars()
+{
+	read -p "Country Name (2 letter code):" -r -n 2 RCA_COUNTRY
 	echo
-	read -p "Organization Name (eg, company):" -r KEY_ORG
+	read -p "Organization Name (eg, company):" -r RCA_ORG
 	echo
 	echo "The CA Variables contain:"
-	echo "KEY_COUNTRY = $KEY_COUNTRY"
-	echo "KEY_ORG = $KEY_ORG"
-	echo "KEY_CN = $ROOTCA_NAME"
+	echo "KEY_COUNTRY = $RCA_COUNTRY"
+	echo "KEY_ORG = $RCA_ORG"
+	echo "KEY_CN = $RCA_NAME"
 	echo
 	read -p "Thats right? (Y/n): " -r -n 1
 	echo
 
 	if [[ $REPLY =~ ^[Nn]$ ]]
 	then
-		rm -rf private/${ROOTCA_FILENAME}.rand private/${ROOTCA_FILENAME}.key
+		cleanup
 		echo "Creation abroaded."
 		exit 0
 	fi
+}
 
-	echo "export KEY_COUNTRY=${KEY_COUNTRY}" >> conf/${ROOTCA_FILENAME}.vars
-	echo "export KEY_ORG=\"${KEY_ORG}\"" >> conf/${ROOTCA_FILENAME}.vars
-	echo "export KEY_CN=\"${ROOTCA_NAME}\"" >> conf/${ROOTCA_FILENAME}.vars
-	echo "export KEY_CRLFILE=${ROOTCA_FILENAME}.crl" >> conf/${ROOTCA_FILENAME}.vars
+
+generate_ca_varfile()
+{
+	echo "### automatic generated vars file on `date '+%d.%m.%y'` ###" > ${RCA_VARFILE}
+	echo
+	echo "export RCA_NAME=\"${RCA_NAME}\"" >> ${RCA_VARFILE}
+	echo "export RCA_FILENAME=${RCA_FILENAME}" >> ${RCA_VARFILE}
+	echo "export RCA_COUNTRY=${RCA_COUNTRY}" >> ${RCA_VARFILE}
+	echo "export RCA_ORG=\"${RCA_ORG}\"" >> ${RCA_VARFILE}
+	echo "export RCA_CN=\"${RCA_NAME}\"" >> ${RCA_VARFILE}
+	echo "export RCA_CACERTDIR=${RCA_CERTDIR}/${RCA_FILENAME}" >> ${RCA_VARFILE}
+	echo "export RCA_CACRLDIR=${RCA_CRLDIR}/${RCA_FILENAME}" >> ${RCA_VARFILE}
+	echo "export RCA_VARFILE=${RCA_CONFDIR}/${RCA_FILENAME}.vars" >> ${RCA_VARFILE}
+	echo "export RCA_RANDFILE=${RCA_SECUREDIR}/${RCA_FILENAME}.rand" >> ${RCA_VARFILE}
+	echo "export RCA_KEYFILE=${RCA_SECUREDIR}/${RCA_FILENAME}.key" >> ${RCA_VARFILE}
+	echo "export RCA_INDEX=${RCA_CONFDIR}/${RCA_FILENAME}.index" >> ${RCA_VARFILE}
+	echo "export RCA_SERIAL=${RCA_CONFDIR}/${RCA_FILENAME}.serial" >> ${RCA_VARFILE}
+	echo "export RCA_CERTFILE=${RCA_CACERTSDIR}/${RCA_FILENAME}.crt" >> ${RCA_VARFILE}
+	echo "export RCA_CRLFILE=${RCA_CRLDIR}/${RCA_FILENAME}.crl" >> ${RCA_VARFILE}
+}
+
+create_ca_files()
+{
+	echo "01" > ${RCA_SERIAL}
+	touch ${RCA_INDEX}
+	[ ! -f ${RCA_CACERTDIR}/README ] && echo "Certificate store for signed ${RCA_NAME} certificates" > ${RCA_CACERTDIR}/README
+	[ ! -f ${RCA_CACERTSDIR}/README ] && echo "CA Certificate store" > ${RCA_CACERTSDIR}/README
+}
+
+create_ca_dirs()
+{
+	# create secure dir if not exist
+	[ ! -d ${RCA_SECUREDIR} ] && mkdir -p ${RCA_SECUREDIR}
+	# create cert dirs if not exist
+	[ ! -d ${RCA_CERTDIR} ] && mkdir -p ${RCA_CERTDIR}
+	[ ! -d ${RCA_CACERTDIR} ] && mkdir -p ${RCA_CACERTDIR}
+	[ ! -d ${RCA_CACERTSDIR} ] && mkdir -p ${RCA_CACERTSDIR}
+	# create crl dirs if not exist
+	[ ! -d ${RCA_CRLDIR} ] && mkdir -p ${RCA_CRLDIR}
+	[ ! -d ${RCA_CACRLDIR} ] && mkdir -p ${RCA_CACRLDIR}
+	# create csr dir if not exist
+	[ ! -d ${RCA_CSRDIR} ] && mkdir -p ${RCA_CSRDIR}
 }
 
 if [[ "$1" == "" || "$2" == "" ]]
@@ -39,30 +102,34 @@ then
 	exit 1
 fi
 
-ROOTCA_NAME=`echo $2 | sed 's/[^a-zA-Z0-9_()[[:space:]]-]//g'`
-ROOTCA_FILENAME=`echo $2 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9[[:space:]]-]//g' | sed 's/ /-/g'`
-
-if [ -f conf/${ROOTCA_FILENAME}.conf ]
+# check if root ca already exists
+if [ -f ${RCA_VARFILE} ]
 then
-	echo "Error: Root CA => "${ROOTCA_NAME}" <= already exists"
+	echo "Error: Root CA => "${RCA_NAME}" <= already exists"
 	exit 1
 fi
 
-# create private dir if not exist
-[ ! -d private ] && mkdir private
+# create root ca dirs
+create_ca_dirs
 
 ## generate random numbers
-openssl rand -out private/${ROOTCA_FILENAME}.rand 4096
+openssl rand -out ${RCA_RANDFILE} 4096
+
+echo
+echo "|======================|"
+echo "| Generate private key |"
+echo "|======================|"
+echo
 
 case $1 in
 
 	rsa)
 		## generate RSA private ca key encrypted with aes 256
-		openssl genpkey -out private/${ROOTCA_FILENAME}.key -aes-256-cbc -algorithm RSA -pkeyopt rsa_keygen_bits:4096
+		openssl genpkey -out ${RCA_KEYFILE} -aes-256-cbc -algorithm RSA -pkeyopt rsa_keygen_bits:4096
 		;;
 	ecdsa)
 		## generate EC private ca key encrypted with aes 256
-		openssl ecparam -name sect571k1 -text -genkey | openssl ec -aes-256-cbc -out private/${ROOTCA_FILENAME}.key
+		openssl ecparam -name sect571k1 -text -genkey | openssl ec -aes-256-cbc -out ${RCA_KEYFILE}
 		;;
 	*)
 		print_usage
@@ -70,18 +137,39 @@ case $1 in
 		;;
 esac
 
-## check if RSA private ca key is created
-if [ ! -f private/${ROOTCA_FILENAME}.key ]
+## check if private ca key is created
+if [ ! -f ${RCA_KEYFILE} ]
 then
-	echo "Error: Private key creation error. Abroat."
+	echo "Error: private key creation error. Abroat."
 	exit 1
 fi
 
-create_ca_vars
-source conf/${ROOTCA_FILENAME}.vars
+echo
+echo "|===========================|"
+echo "| Generate certificate file |"
+echo "|===========================|"
+echo
 
-[ ! -d certs ] && mkdir certs
+get_ca_vars
+create_ca_files
+generate_ca_varfile
 
-openssl req -out certs/${ROOTCA_FILENAME}.crt -new -rand private/${ROOTCA_FILENAME}.rand -key private/${ROOTCA_FILENAME}.key -sha1 -config conf/root-ca.conf -x509 -days 7300 -batch
+# source the new generated var file
+source ${RCA_VARFILE}
+
+# generate the self signed root ca file
+openssl req -out ${RCA_CERTFILE} -new -rand ${RCA_RANDFILE} -key ${RCA_KEYFILE} -sha1 -config ${RCA_CONFDIR}/root-ca.conf -x509 -days 7300 -batch
+
+echo
+echo "|===================|"
+echo "| Generate crl file |"
+echo "|===================|"
+echo
+
+# generate crl file
+openssl ca -gencrl -config ${RCA_CONFDIR}/sub-ca.conf -out ${RCA_CRLFILE}
+
+# print aut crl file
+openssl crl -in ${RCA_CRLFILE} -noout -text
 
 exit 0

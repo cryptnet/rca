@@ -1,8 +1,10 @@
 #!/bin/bash
 
+[ -f basic.conf ] && source basic.conf || exit 1
+
 print_usage()
 {
-	echo "usage: `basename $0` [path to csr file]"
+	echo "usage: `basename $0` [csr file in ${RCA_CSRDIR}]"
 	echo
 }
 
@@ -11,15 +13,15 @@ get_available_cas()
 	echo
 	echo "Found these CA's in CA Storage:"
 	echo
-	for ROOTCA_FILENAME in $(cd certs; ls *.crt)
+	for RCA_FILE in $(cd ${RCA_CACERTSDIR}; ls *.crt)
 	do
-		ROOTCA_NAME=`openssl x509 -in certs/${ROOTCA_FILENAME} -noout -text | grep Subject: | sed 's/.*=//g'`
-		ROOTCA_ALGO=`openssl x509 -in certs/${ROOTCA_FILENAME} -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
-		if [ "$ROOTCA_ALGO" == "$CSR_ALGO" ]
+		RCA_NAME=`openssl x509 -in ${RCA_CACERTSDIR}/${RCA_FILE} -noout -text | grep Subject: | sed 's/.*=//g'`
+		RCA_ALGO=`openssl x509 -in ${RCA_CACERTSDIR}/${RCA_FILE} -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
+		if [ "$RCA_ALGO" == "$CSR_ALGO" ]
 		then
 			let "COUNTER++"
-			ROOTCA_FILES[$COUNTER]="${ROOTCA_FILENAME}"
-			echo -e "\t$COUNTER) ${ROOTCA_NAME}\t PKI Algorithm: ${ROOTCA_ALGO}"
+			RCA_FILES[$COUNTER]="${RCA_FILE}"
+			echo -e "\t$COUNTER) ${RCA_NAME}\t PKI Algorithm: ${RCA_ALGO}"
 		fi
 	done
 	if [ -z "$COUNTER" ]
@@ -34,7 +36,7 @@ get_available_cas()
 
 	if [[ $REPLY =~ ^[0-9]*$ ]]
 	then
-		ROOTCA_FILENAME=${ROOTCA_FILES[$REPLY]}
+		RCA_FILE=${RCA_FILES[$REPLY]}
 	else
 		echo "Error: wrong input"
 		exit 1
@@ -43,18 +45,18 @@ get_available_cas()
 
 check_csr_file()
 {
-	if [ ! -f $1 ]
+	if [ ! -f ${RCA_CSRDIR}/$1 ]
 	then
 		echo "Error: Input not a file."
 		exit 1
 	fi
-	if [ "$(head -n 1 $1)" != "-----BEGIN CERTIFICATE REQUEST-----" ]
+	if [ "$(head -n 1 ${RCA_CSRDIR}/$1)" != "-----BEGIN CERTIFICATE REQUEST-----" ]
 	then
 		echo "Error: file isn't a valid CSR"
 		exit 1
 	fi
-	CSR_SUBJECT=`openssl req -in $1 -noout -text | grep Subject: | sed 's/.*Subject://g' `
-	CSR_ALGO=`openssl req -in $1 -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
+	CSR_SUBJECT=`openssl req -in ${RCA_CSRDIR}/$1 -noout -text | grep Subject: | sed 's/.*Subject://g' `
+	CSR_ALGO=`openssl req -in ${RCA_CSRDIR}/$1 -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
 	echo
 	echo "Information about the CSR to sign:"
 	echo
@@ -70,10 +72,17 @@ check_csr_file()
 
 create_signature()
 {
-	if [ "$ROOTCA_FILENAME" != "" ]
+	if [ "$RCA_FILE" != "" ]
 	then
-		export ROOTCA_FILENAME=`echo $ROOTCA_FILENAME | sed 's/\.crt//'`
-		openssl ca -in $1 -config conf/sub-ca.conf
+		RCA_VARFILE=${RCA_CONFDIR}/`echo $RCA_FILE | sed 's/\.crt//'`.vars
+		if [ -f $RCA_VARFILE ]
+		then
+			source $RCA_VARFILE
+			openssl ca -in ${RCA_CSRDIR}/$1 -config ${RCA_CONFDIR}/sub-ca.conf -out ${RCA_CACERTDIR}/`echo $1 | sed 's/\..*//'`.crt
+		else
+			echo "Error: no variable file available for CA!"
+			exit 1
+		fi
 	fi
 }
 
@@ -88,54 +97,3 @@ get_available_cas
 create_signature $1
 
 exit 0
-
-
-
-ROOTCA_NAME=`echo $2 | sed 's/[^a-zA-Z0-9_()[[:space:]]-]//g'`
-ROOTCA_FILENAME=`echo $2 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9[[:space:]]-]//g' | sed 's/ /-/g'`
-
-if [ -f conf/${ROOTCA_FILENAME}.conf ]
-then
-	echo "Error: Root CA => "${ROOTCA_NAME}" <= already exists"
-	exit 1
-fi
-
-# create private dir if not exist
-[ ! -d private ] && mkdir private
-
-## generate random numbers
-openssl rand -out private/${ROOTCA_FILENAME}.rand 4096
-
-case $1 in
-
-	rsa)
-		## generate RSA private ca key encrypted with aes 256
-		openssl genpkey -out private/${ROOTCA_FILENAME}.key -aes-256-cbc -algorithm RSA -pkeyopt rsa_keygen_bits:4096
-		;;
-	ecdsa)
-		## generate EC private ca key encrypted with aes 256
-		openssl ecparam -name sect571k1 -text -genkey | openssl ec -aes-256-cbc -out private/${ROOTCA_FILENAME}.key
-		;;
-	*)
-		print_usage
-		exit 1
-		;;
-esac
-
-## check if RSA private ca key is created
-if [ ! -f private/${ROOTCA_FILENAME}.key ]
-then
-	echo "Error: Private key creation error. Abroat."
-	exit 1
-fi
-
-create_ca_vars
-source conf/${ROOTCA_FILENAME}.vars
-
-[ ! -d certs ] && mkdir certs
-
-openssl req -out certs/${ROOTCA_FILENAME}.crt -new -rand private/${ROOTCA_FILENAME}.rand -key private/${ROOTCA_FILENAME}.key -sha1 -config conf/root-ca.conf -x509 -days 7300 -batch
-
-exit 0
-openssl x509 -in certs/test-rsa-root-ca.crt -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'; done
------BEGIN CERTIFICATE REQUEST-----
