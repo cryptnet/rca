@@ -113,7 +113,7 @@ fi
 create_ca_dirs
 
 ## generate random numbers
-openssl rand -out ${RCA_RANDFILE} 4096
+$OPENSSL rand -out ${RCA_RANDFILE} 4096
 
 echo
 echo "|======================|"
@@ -125,11 +125,11 @@ case "$1" in
 
 	rsa)
 		## generate RSA private ca key encrypted with aes 256
-		openssl genpkey -out ${RCA_KEYFILE} -aes-256-cbc -algorithm RSA -pkeyopt rsa_keygen_bits:4096
+		$OPENSSL genpkey -out ${RCA_KEYFILE} -aes-256-cbc -algorithm RSA -pkeyopt rsa_keygen_bits:4096
 		;;
 	ecdsa)
 		## generate EC private ca key encrypted with aes 256
-		openssl ecparam -name sect571k1 -text -genkey | openssl ec -aes-256-cbc -out ${RCA_KEYFILE}
+		$OPENSSL ecparam -name sect571k1 -text -genkey | $OPENSSL ec -aes-256-cbc -out ${RCA_KEYFILE}
 		;;
 	*)
 		print_usage
@@ -158,7 +158,7 @@ generate_ca_varfile
 source ${RCA_VARFILE}
 
 # generate the self signed root ca file
-openssl req -out ${RCA_CERTFILE} -new -rand ${RCA_RANDFILE} -key ${RCA_KEYFILE} -sha1 -config ${RCA_CONFDIR}/root-ca.conf -x509 -days 7300 -batch
+$OPENSSL req -out ${RCA_CERTFILE} -new -rand ${RCA_RANDFILE} -key ${RCA_KEYFILE} -sha1 -config ${RCA_CONFDIR}/root-ca.conf -x509 -days 7300 -batch
 
 echo
 echo "|===================|"
@@ -167,9 +167,9 @@ echo "|===================|"
 echo
 
 # generate crl file
-openssl ca -gencrl -config ${RCA_CONFDIR}/sub-ca.conf -out ${RCA_CRLFILE}
+$OPENSSL ca -gencrl -config ${RCA_CONFDIR}/sub-ca.conf -out ${RCA_CRLFILE}
 
 # print aut crl file
-openssl crl -in ${RCA_CRLFILE} -noout -text
+$OPENSSL crl -in ${RCA_CRLFILE} -noout -text
 
 exit 0
