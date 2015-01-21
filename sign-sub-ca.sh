@@ -15,8 +15,8 @@ get_available_cas()
 	echo
 	for RCA_FILE in $(cd ${RCA_CACERTSDIR}; ls *.crt)
 	do
-		RCA_NAME=`openssl x509 -in ${RCA_CACERTSDIR}/${RCA_FILE} -noout -text | grep Subject: | sed 's/.*=//g'`
-		RCA_ALGO=`openssl x509 -in ${RCA_CACERTSDIR}/${RCA_FILE} -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
+		RCA_NAME=`$OPENSSL x509 -in ${RCA_CACERTSDIR}/${RCA_FILE} -noout -text | grep Subject: | sed 's/.*=//g'`
+		RCA_ALGO=`$OPENSSL x509 -in ${RCA_CACERTSDIR}/${RCA_FILE} -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
 		if [ "$RCA_ALGO" == "$CSR_ALGO" ]
 		then
 			let "COUNTER++"
@@ -55,8 +55,8 @@ check_csr_file()
 		echo "Error: file isn't a valid CSR"
 		exit 1
 	fi
-	CSR_SUBJECT=`openssl req -in ${RCA_CSRDIR}/$1 -noout -text | grep Subject: | sed 's/.*Subject://g' `
-	CSR_ALGO=`openssl req -in ${RCA_CSRDIR}/$1 -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
+	CSR_SUBJECT=`$OPENSSL req -in ${RCA_CSRDIR}/$1 -noout -text | grep Subject: | sed 's/.*Subject://g' `
+	CSR_ALGO=`$OPENSSL req -in ${RCA_CSRDIR}/$1 -noout -text | grep 'Public Key Algorithm:' | sed 's/.*: //g'`
 	echo
 	echo "Information about the CSR to sign:"
 	echo
@@ -78,7 +78,7 @@ create_signature()
 		if [ -f $RCA_VARFILE ]
 		then
 			source $RCA_VARFILE
-			openssl ca -in ${RCA_CSRDIR}/$1 -config ${RCA_CONFDIR}/sub-ca.conf -out ${RCA_CACERTDIR}/`echo $1 | sed 's/\..*//'`.crt
+			$OPENSSL ca -in ${RCA_CSRDIR}/$1 -config ${RCA_CONFDIR}/sub-ca.conf -out ${RCA_CACERTDIR}/`echo $1 | sed 's/\..*//'`.crt
 		else
 			echo "Error: no variable file available for CA!"
 			exit 1
