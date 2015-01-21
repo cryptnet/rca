@@ -121,7 +121,7 @@ echo "| Generate private key |"
 echo "|======================|"
 echo
 
-case $1 in
+case "$1" in
 
 	rsa)
 		## generate RSA private ca key encrypted with aes 256
